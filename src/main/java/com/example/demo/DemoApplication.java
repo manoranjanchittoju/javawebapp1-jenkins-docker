@@ -11,7 +11,7 @@ public class DemoApplication {
 
     @GetMapping("/")
     public String hello() {
-        return "Hello from your Java Web App! Deployed via Jenkins CI/CD.";
+        return "Hello from your Java Web App! Deployed via Jenkins CI/CD using Docker.";
     }
 
     public static void main(String[] args) {

@@ -1,61 +1,65 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'maven:3.8.7-eclipse-temurin-17'
+            args '-v /root/.m2:/root/.m2'
+        }
+    }
 
     environment {
-        // Define a unique name for our Docker image
-        DOCKER_IMAGE_NAME = "java-cicd-demo-app"
-        DOCKER_IMAGE_TAG = "latest"
+        // Docker registry info if needed
+        REGISTRY = 'your-docker-registry.example.com'
+        IMAGE_NAME = 'your-app-name'
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Get the source code from Git
-                echo 'Checking out code...'
                 checkout scm
             }
         }
 
-        stage('Build Application') {
+        stage('Build') {
             steps {
-                // Build the Java application using Maven
-                echo 'Building the application with Maven...'
                 sh 'mvn clean package'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Test') {
             steps {
-                // Build a new Docker image
-                echo "Building Docker image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                script {
-                    def dockerImage = docker.build("${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}")
-                }
+                // Publish JUnit test results (adjust path if your reports are elsewhere)
+                junit 'target/surefire-reports/*.xml'
             }
         }
 
-        stage('Deploy Application') {
+        stage('Archive Artifact') {
             steps {
-                // Deploy the new Docker container
-                echo "Deploying the container..."
-                script {
-                    // Stop and remove the old container if it exists, to avoid port conflicts
-                    // The '|| true' ensures the command doesn't fail if the container isn't running
-                    sh "docker stop ${DOCKER_IMAGE_NAME} || true"
-                    sh "docker rm ${DOCKER_IMAGE_NAME} || true"
+                archiveArtifacts artifacts: 'target/*.jar, target/*.war', fingerprint: true
+            }
+        }
 
-                    // Run the new container
-                    docker.image("${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}").run("-d -p 8081:8081 --name ${DOCKER_IMAGE_NAME}")
+        stage('Build & Push Docker Image') {
+            when {
+                expression { env.BUILD_DOCKER == 'true' }
+            }
+            steps {
+                script {
+                    docker.withRegistry("https://${env.REGISTRY}", 'docker-credentials-id') {
+                        def appImage = docker.build("${env.REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}")
+                        appImage.push()
+                    }
                 }
             }
         }
     }
 
     post {
-        always {
-            echo 'Pipeline finished.'
-            // Optional: Clean up old Docker images to save space
-            // sh 'docker image prune -f'
+        success {
+            echo "Build #${env.BUILD_NUMBER} completed successfully!"
+        }
+        failure {
+            echo "Build failed. Please check the logs."
         }
     }
 }
